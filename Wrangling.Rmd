@@ -28,6 +28,7 @@ df_full = df_full %>%
 
 # Selecting variables
 ```{r}
+# Selecting relevant variables
 df_filtered = df_full %>% 
   select(a_year, b_country_alpha, g_townsize2, h_settlement, h_urbrural,
          q46, q47,
@@ -38,6 +39,7 @@ df_filtered = df_full %>%
          q260, q262, q263, q264, q265, q269, q270, q271, q273, q274, 
          q275r, q277r, q278r, q279, q281, q284, q285, q288r, q289)
 
+# Changing variable names
 colnames(df_filtered) = c('year', 'country', 'town_size', 'settlement_type', 'urban',
                  'happy', 'healthy',
                  'church_member', 'sport_member', 'arts_member', 'union_member', 'political_party_member',
@@ -51,7 +53,7 @@ colnames(df_filtered) = c('year', 'country', 'town_size', 'settlement_type', 'ur
                  'education_father','employment_status', 'occupation', 'sector', 'breadwinner', 'income', 'religion')
 ```
 
-# Modifying and creating variables
+# Modifying variables
 ```{r}
 df = df_filtered %>%
   # Converting urban into an indicator variable
