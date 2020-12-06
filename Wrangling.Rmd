@@ -96,8 +96,8 @@ df = df_filtered %>%
       . == 3 ~ 0,
       TRUE ~ NA_real_))) %>%
   # Creating one political variable which is the sum of political variables' scores 
-  mutate(political = rowSums(select(., political_1:political_4))) %>%
-  select(-c(political_1:political_6)) %>%
+  # mutate(political = rowSums(select(., political_1:political_4))) %>%
+  # select(-c(political_1:political_6)) %>%
   # Converting gender into an indicator variables
   mutate(male = case_when(gender == 1 ~ 1,
                           gender == 2 ~ 0,
@@ -132,7 +132,8 @@ df = df_filtered %>%
                  'environment_member', 'prof_member', 'charity_member', 'consumer_member', 'self_help_member',
                  'women_member', 'religious', 'male', 'immigrant', 'immigrant_mother', 'immigrant_father',
                 'citizen', 'live_with_parents', 'relationship', 'education', 'education_mother', 'education_father',
-                'employment_status', 'occupation', 'sector', 'breadwinner', 'income', 'religion')),
+                'employment_status', 'occupation', 'sector', 'breadwinner', 'income', 'religion', 'political_1',
+                'political_2', 'political_3', 'political_4', 'political_5', 'political_6')),
     list(~as.factor(.)))
 
 # Removing unnecessary data frames
