@@ -39,7 +39,6 @@ df_filtered = df_full %>%
          q94, q95, q96, q97, q98, q99, q100, q101, q102, q103, q104,
          q173,
          q209, q210, q211, q212, q221, q222,
-         q240, 
          q260, q262, q263, q264, q265, q269, q270, q271, q273, q274, 
          q275r, q277r, q278r, q279, q281, q284, q285, q288r, q289)
 
@@ -51,7 +50,6 @@ colnames(df_filtered) = c('year', 'country', 'town_size', 'settlement_type', 'ur
                  'women_member', 
                  'religious', 
                  'political_1', 'political_2', 'political_3', 'political_4', 'political_5', 'political_6',
-                 'ideology',
                  'gender', 'age', 'immigrant', 'immigrant_mother', 'immigrant_father', 'citizen', 'household_size',
                  'live_with_parents', 'relationship', 'num_kids', 'education', 'education_mother',
                  'education_father','employment_status', 'occupation', 'sector', 'breadwinner', 'income', 'religion')
