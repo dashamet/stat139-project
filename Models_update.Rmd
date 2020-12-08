@@ -53,6 +53,14 @@ logit3 = glm(happy_cont ~ . -country -year -age, data=train, family='binomial')
 exp(as.data.frame(summary(logit3)$coef[,1])) %>% arrange(summary(logit3)$coef[, 1])
 ```
 
+```{r}
+logit5 = glm(happy_cont ~ . -country -year, data=train, family='binomial')
+
+# See exponentiated betas in a sorted list from smallest to largest
+exp(as.data.frame(summary(logit5)$coef[,1])) %>% arrange(summary(logit5)$coef[, 1])
+```
+
+
 ```{r eval=FALSE}
 # TAKES A LONG TIME; Calculting confidence intervals of coefficients
 logit3_df = cbind(summary(logit3)$coef[,1], confint(logit3))
@@ -109,7 +117,7 @@ cols_multiple_factors = c("town_size", "settlement_type", "political_1", "politi
 # Assign a value of the column median to all missing values
 for(col in cols01){
   # Train set
-  med = median(as.numeric(train[,col][!is.na(train[,col])]))-1
+  med = median(as.numeric(train[,col][!is.na(train[,col])]))-1 # subtracting 1 as stated above
   train[,col][is.na(train[,col])] <- med
   # Test set
   med = median(as.numeric(test[,col][!is.na(test[,col])]))-1
@@ -134,7 +142,7 @@ round(summary(logit.step)$coef,5)
 Compare logit3 and logit.step
 
 ```{r}
-anova(logit3, logit.step, test="LRT")
+anova(logit.step, logit3, test="LRT")
 ```
 
 LASSO model and comparison to logit.step
@@ -167,18 +175,8 @@ Logistic Mixed Effects model, by country
 glmer1 = glmer(happy_cont ~ (1|country), data=train, family='binomial')
 ```
 
-```{r}
-X = train %>% select(-c(country, year, age, happy_cont))
-x = train %>% select(-c(country, year, age, happy_cont))
-y = train$happy_cont
-predict(logit3, train)
-```
-
-
 Obtain the predictions and accuracies
 ```{r}
-
-
 logit3.pred.train <- ifelse(predict(logit3, train, type="response") > 0.5, 1, 0)
 logit3.pred.test <- ifelse(predict(logit3, test, type="response") > 0.5, 1, 0)
 
@@ -197,9 +195,12 @@ tab = data.frame(logit3=
                      accuracy(logit3.pred.test, test$happy_cont)),
                  logit.step=
                    c(accuracy(logit.step.pred.train, train$happy_cont),
-                     accuracy(logit.step.pred.test, test$happy_cont)))
+                     accuracy(logit.step.pred.test, test$happy_cont)),
+                 baseline=
+                   c(sum(train$happy_cont)/dim(train)[1], 
+                     sum(test$happy_cont)/dim(test)[1]))
 rownames(tab) <- c("train", "test")
-tab
+round(tab, 3)
 
 ```
 
