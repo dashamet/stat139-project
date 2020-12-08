@@ -94,8 +94,13 @@ May not be useful, since we have many missing values. We'd need to assign a valu
 ```{r}
 # Remove observations with missing response variable
 train <- train %>% filter(!is.na(train$happy_cont))
+test <- test %>% filter(!is.na(test$happy_cont))
+
 # Look at the missing values across variables
 apply(is.na(train), 2, sum)
+apply(is.na(test), 2, sum)
+
+# Impute missing values
 
 # as.numeric turns 0-1 factors into 1 and 2, and we need to account for this by subtracting 1 from those columns with 0-1 factors
 cols01 = c("urban", "healthy", "church_member", "sport_member", "arts_member", "union_member", "political_party_member", "environment_member", "prof_member", "charity_member", "consumer_member", "self_help_member", "women_member", "religious","political_5","political_6", "immigrant", "immigrant_mother", "immigrant_father", "citizen", "live_with_parents", "breadwinner", "male")
@@ -103,12 +108,20 @@ cols_multiple_factors = c("town_size", "settlement_type", "political_1", "politi
 
 # Assign a value of the column median to all missing values
 for(col in cols01){
+  # Train set
   med = median(as.numeric(train[,col][!is.na(train[,col])]))-1
   train[,col][is.na(train[,col])] <- med
+  # Test set
+  med = median(as.numeric(test[,col][!is.na(test[,col])]))-1
+  test[,col][is.na(test[,col])] <- med
 }
 for(col in cols_multiple_factors){
+  # Train set
   med = median(as.numeric(train[,col][!is.na(train[,col])]))
   train[,col][is.na(train[,col])] <- med
+  # Test set
+  med = median(as.numeric(test[,col][!is.na(test[,col])]))
+  test[,col][is.na(test[,col])] <- med
 }
 
 logit4 = glm(happy_cont ~ . -country -year, data=train, family='binomial')
@@ -143,12 +156,9 @@ abline(v=log(lasso.cv$lambda.min),col="gray",lty=2)
 legend(x=6,y=28,colnames(X),lty=1:5,col=1:6,cex=0.5,lwd=1.2)
 ```
 
-At the optimal value of lambda, none of the predictors are shrunk to zero yet by the LASSO model.
 ```{r eval=FALSE}
 coef(lasso.cv,s=lasso.cv$lambda.min)
 ```
-
-
 
 
 Logistic Mixed Effects model, by country
@@ -165,5 +175,31 @@ predict(logit3, train)
 ```
 
 
+Obtain the predictions and accuracies
+```{r}
 
+
+logit3.pred.train <- ifelse(predict(logit3, train, type="response") > 0.5, 1, 0)
+logit3.pred.test <- ifelse(predict(logit3, test, type="response") > 0.5, 1, 0)
+
+logit.step.pred.train = ifelse(predict(logit.step, train, type="response") > 0.5, 1, 0)
+logit.step.pred.test = ifelse(predict(logit.step, test, type="response") > 0.5, 1, 0)
+
+# Accuracy
+accuracy <- function(predicted, actual){
+  acc = sum(predicted==actual)/length(predicted)
+  return(acc)
+}
+
+# Table with accuracies
+tab = data.frame(logit3=
+                   c(accuracy(logit3.pred.train, train$happy_cont),
+                     accuracy(logit3.pred.test, test$happy_cont)),
+                 logit.step=
+                   c(accuracy(logit.step.pred.train, train$happy_cont),
+                     accuracy(logit.step.pred.test, test$happy_cont)))
+rownames(tab) <- c("train", "test")
+tab
+
+```
 
