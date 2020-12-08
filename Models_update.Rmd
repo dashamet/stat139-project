@@ -47,18 +47,29 @@ getmode <- function(v) {
 # as.numeric turns 0-1 factors into 1 and 2, and we need to account for this by subtracting 1 from those columns with 0-1 factors
 
 cols01 = c("urban", "healthy", "church_member", "sport_member", "arts_member", "union_member", "political_party_member", "environment_member", "prof_member", "charity_member", "consumer_member", "self_help_member", "women_member", "religious","political_5","political_6", "immigrant", "immigrant_mother", "immigrant_father", "citizen", "live_with_parents", "breadwinner", "male")
-cols_multiple_factors = c("town_size", "settlement_type", "political_1", "political_2","political_3","political_4",'age','household_size','relationship',"num_kids","education","education_mother", "education_father","employment_status","occupation","sector", "income", "religion")
+
+cols_multiple_factors = c("town_size", "settlement_type", "political_1", "political_2","political_3","political_4",'relationship',"education","education_mother", "education_father","employment_status","occupation","sector", "income", "religion")
+
+cols_cont = c('age','household_size',"num_kids")
 
 # Assign a value of the column mode to all missing values
 for(col in cols01){
   # Train set
   mod = getmode(as.numeric(train[,col][!is.na(train[,col])]))-1 
-  train[,col][is.na(train[,col])] <- mod
+  train[,col][is.na(train[,col])] <- as.factor(mod)
   # Test set
   mod = getmode(as.numeric(test[,col][!is.na(test[,col])]))-1
-  test[,col][is.na(test[,col])] <- mod
+  test[,col][is.na(test[,col])] <- as.factor(mod)
 }
 for(col in cols_multiple_factors){
+  # Train set
+  mod = getmode(as.numeric(train[,col][!is.na(train[,col])]))
+  train[,col][is.na(train[,col])] <- as.factor(mod)
+  # Test set
+  mod = getmode(as.numeric(test[,col][!is.na(test[,col])]))
+  test[,col][is.na(test[,col])] <- as.factor(mod)
+}
+for(col in cols_cont){
   # Train set
   mod = getmode(as.numeric(train[,col][!is.na(train[,col])]))
   train[,col][is.na(train[,col])] <- mod
@@ -141,7 +152,8 @@ Exploring the use of a LASSO model to get rid of uninformative predictors that g
 ```{r eval=FALSE}
 # Fit a Lasso model
 X = model.matrix(logit3)[,-1]
-lasso.cv = cv.glmnet(X,train$happy_cont,k=5)
+lasso.cv = cv.glmnet(x = X, y = train$happy_cont, alpha = 1, family = "multinomial", type.multinomial="grouped"
+)
 plot(lasso.cv)
 ```
 
@@ -208,3 +220,80 @@ tab[2:3,] <- round(tab[2:3,], 3)
 tab
 ```
 
+## Logistic Mixed Effects model, by country
+
+We hypothesize that the distribution of happiness levels are correlated for our samples at the country level. Political and economic circumstances of a country `X` would affect happiness of samples from `X` but not those from countries `Y, Z`. Moreover, people living in some countries, perhaps developed ones, are more likely to be happier than people living in other, likely undeveloped, countries. Existence of scenarios like these makes `country` a natural grouping variable. The below histogram yields support to this argument:
+
+```{r, echo = F}
+df %>% 
+  mutate(happy_full = happy_full) %>%
+  ggplot(aes(x = happy_full)) + 
+        geom_histogram(color = "darkorange3", alpha = 0.3) +
+        facet_wrap(. ~ country, ncol = 10) +
+        labs(
+          x = "Happiness Level (1-4)", 
+          y = "Number of Respondents",
+          title = "Distribution of happiness levels (1-4) by country"
+          )
+
+mode <- function(codes){
+  which.max(tabulate(codes))
+}
+
+happy.modes <- df %>% 
+  filter(!is.na(happy_full)) %>% 
+  group_by(country) %>%
+  summarize(n = mode(happy_full)) %>% 
+  ungroup()
+
+happy.perc <- df %>% 
+  filter(!is.na(happy_full)) %>% 
+  group_by(country, happy_full) %>%
+  summarize(n = n()) %>% 
+  ungroup() %>% 
+  spread(happy_full, n) %>%
+  mutate(total = `1` + `2` + `3` + `4`) %>%
+  mutate(
+    `1` = round(`1` / total, 3), 
+    `2` = round(`2` / total, 3), 
+    `3` = round(`3` / total, 3), 
+    `4` = round(`4` / total, 3)
+    )
+```
+From this, there are 2 main takeaways. First, there exist important distributional differences among countries. Although the mode happiness level is 2 for most states, in developing countries such as `r as.character(happy.modes$country[happy.modes$n == 1])` the most popular response was `1 = Not at all happy`. Meanwhile, all developed countries in the dataset have mode happiness levels higher at `2 = Not very happy`. Second, the number of samples vary largely among countries. This can lead to overfitting for states like `CHL, ARG, CYP` (< 1000 samples, with many `NA` values) if `country` were to be included as a categorical variable. These 2 observations make mixed effect models grouped by `country` highly relevant for this problem. 
+
+As a baseline, we can fit a linear mixed effects model with random intercepts including all variables except `country, year`:
+```{r}
+glmer1 = glmer(
+  happy_cont ~ . - country - year -happy_full + (1 | country), 
+  data=train, 
+  nAGQ=0,
+  family='binomial')
+```
+
+```{r}
+summary(glmer1)
+# Print the random effects
+ranef(glmer1)
+```
+
+Another variable that should be considered for random effects in the mixed effects model is the `year` variable. The dataset contains 4 years 2017 - 2020, which is not enough to seriously track temporal trends over time.  However, the effect of year on happiness is non-negligible, and using it as a categorical variable fits our purposes. Particularly, some years 
+
+However, different countries are affected by different circumstances in each year which would affect the happiness levels of local samples differently. For example, in the years following up to 2020, Latin American countries were dealing with a severe economic and political crisis due to plummeting oil prices whereas United States was experiencing economic boom. These pre-covid years likely affected Latin Americans differently than Americans. 
+
+```{r}
+df %>% 
+  mutate(happy_full = happy_full) %>%
+  group_by(year) %>%
+  summarize(mean_happiness = mean()) %>%
+  ungroup() %>%
+  ggplot(aes(x = year, y = mode_happiness)) + 
+        geom_line(color = "firebrick", alpha = 0.3) +
+        facet_wrap(. ~ country, ncol = 10) +
+        labs(
+          x = "Happiness Level (1-4)", 
+          y = "Number of Respondents",
+          title = "Distribution of happiness levels (1-4) by country"
+          )
+
+```
