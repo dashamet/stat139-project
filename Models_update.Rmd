@@ -1,0 +1,205 @@
+---
+title: "Models"
+author: "Maarten de Vries"
+date: "12/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(lme4)
+library(glmnet)
+```
+
+Create a test and train set:
+
+```{r}
+## 80% of the sample size
+smp_size <- floor(0.80 * nrow(df))
+
+## set the seed to make partition reproducible
+set.seed(123)
+train_ind <- sample(seq_len(nrow(df)), size = smp_size)
+
+# Get train and test dataset
+train <- df[train_ind, ] %>% select(-happy)
+test <- df[-train_ind, ] %>% select(-happy)
+```
+
+Two simple logistic regression models
+
+Happiness by gender:
+```{r}
+logit1 = glm(happy_cont ~ male, data=train, family='binomial')
+summary(logit1)$coef
+```
+The odds ratio for being happy comparing men to women is estimated to be `r exp(coef(logit1)[2])` with 95% CI `r exp(confint(logit1))`
+
+Happiness by age:
+```{r}
+logit2 = glm(happy_cont ~ age, data=train, family='binomial')
+summary(logit2)$coef
+```
+The multiplicative change in odds ratio of being happy for a 1-year increase in age is `r exp(coef(logit2)[2])` with 95% CI `r exp(confint(logit2)[2,])`
+
+Multiple logistic regression model
+```{r}
+logit3 = glm(happy_cont ~ . -country -year -age, data=train, family='binomial')
+
+# See exponentiated betas in a sorted list from smallest to largest
+exp(as.data.frame(summary(logit3)$coef[,1])) %>% arrange(summary(logit3)$coef[, 1])
+```
+
+```{r eval=FALSE}
+# TAKES A LONG TIME; Calculting confidence intervals of coefficients
+logit3_df = cbind(summary(logit3)$coef[,1], confint(logit3))
+
+# Exponentiate the logistic regression betas
+logit3_df_exp = as.data.frame(exp(logit3_df))
+colnames(logit3_df_exp) <- c("estimate","2.5","97.5")
+logit3_df_exp <- rownames_to_column(logit3_df_exp, "variable")
+
+logit3_df_exp <- logit3_df_exp %>% 
+  # Mark as significant if the confidence interval does not contain 0
+  mutate(signif = (logit3_df_exp$`2.5` < 1 & logit3_df_exp$`97.5` < 1) |  (logit3_df_exp$`2.5` > 1 & logit3_df_exp$`97.5` > 1)) %>%
+  # Sort in order of estimated exponentiated coefficient
+  arrange(estimate) 
+
+logit3_df_exp %>% filter(signif == TRUE)
+```
+
+
+
+According to our logistic model, the significant variables that correspond to the lowest odds ratio coefficient are:
+- Jewish or Orthodox religion, and less so protestant
+- Being  divorced, separated, or widowed
+- Being unemployed, self-employed or 'Other'
+- Being member of self-help group
+- Being the breadwiner
+
+The significant variables that correspond to the higheset odds ratio coefficients are:
+- Being healthy
+- Having moderate / high income
+- Occupation: farmer
+- Usually voting in local elections
+- Living in a district center
+- Signing political petitions
+- Being a charity member
+
+Stepwise variable selection in GLM
+May not be useful, since we have many missing values. We'd need to assign a value of 1 for missing data, which is not ideal.
+```{r}
+# Remove observations with missing response variable
+train <- train %>% filter(!is.na(train$happy_cont))
+test <- test %>% filter(!is.na(test$happy_cont))
+
+# Look at the missing values across variables
+apply(is.na(train), 2, sum)
+apply(is.na(test), 2, sum)
+
+# Impute missing values
+
+# as.numeric turns 0-1 factors into 1 and 2, and we need to account for this by subtracting 1 from those columns with 0-1 factors
+cols01 = c("urban", "healthy", "church_member", "sport_member", "arts_member", "union_member", "political_party_member", "environment_member", "prof_member", "charity_member", "consumer_member", "self_help_member", "women_member", "religious","political_5","political_6", "immigrant", "immigrant_mother", "immigrant_father", "citizen", "live_with_parents", "breadwinner", "male")
+cols_multiple_factors = c("town_size", "settlement_type", "political_1", "political_2","political_3","political_4",'age','household_size','relationship',"num_kids","education","education_mother", "education_father","employment_status","occupation","sector", "income", "religion")
+
+# Assign a value of the column median to all missing values
+for(col in cols01){
+  # Train set
+  med = median(as.numeric(train[,col][!is.na(train[,col])]))-1
+  train[,col][is.na(train[,col])] <- med
+  # Test set
+  med = median(as.numeric(test[,col][!is.na(test[,col])]))-1
+  test[,col][is.na(test[,col])] <- med
+}
+for(col in cols_multiple_factors){
+  # Train set
+  med = median(as.numeric(train[,col][!is.na(train[,col])]))
+  train[,col][is.na(train[,col])] <- med
+  # Test set
+  med = median(as.numeric(test[,col][!is.na(test[,col])]))
+  test[,col][is.na(test[,col])] <- med
+}
+
+logit4 = glm(happy_cont ~ . -country -year, data=train, family='binomial')
+
+# Takes long to run backward variable selection
+logit.step = step(logit4, direction='backward', trace=0)
+round(summary(logit.step)$coef,5)
+```
+
+Compare logit3 and logit.step
+
+```{r}
+anova(logit3, logit.step, test="LRT")
+```
+
+LASSO model and comparison to logit.step
+
+Exploring the use of a LASSO model to get rid of uninformative predictors that get shrunk to zero.
+```{r eval=FALSE}
+# Fit a Lasso model
+X = model.matrix(logit4)[,-1]
+lasso.cv = cv.glmnet(X,train$happy_cont,k=5)
+plot(lasso.cv)
+```
+
+```{r eval=FALSE}
+# Look at the trajectory plot of the coefficients
+coefs = coef(lasso.cv,s=lasso.cv$lambda)
+num.maineffects = ncol(X) 
+matplot(log(lasso.cv$lambda),t(coefs[2:(num.maineffects+1),]),type="l")
+abline(v=log(lasso.cv$lambda.min),col="gray",lty=2)
+legend(x=6,y=28,colnames(X),lty=1:5,col=1:6,cex=0.5,lwd=1.2)
+```
+
+```{r eval=FALSE}
+coef(lasso.cv,s=lasso.cv$lambda.min)
+```
+
+
+Logistic Mixed Effects model, by country
+
+```{r}
+glmer1 = glmer(happy_cont ~ (1|country), data=train, family='binomial')
+```
+
+```{r}
+X = train %>% select(-c(country, year, age, happy_cont))
+x = train %>% select(-c(country, year, age, happy_cont))
+y = train$happy_cont
+predict(logit3, train)
+```
+
+
+Obtain the predictions and accuracies
+```{r}
+
+
+logit3.pred.train <- ifelse(predict(logit3, train, type="response") > 0.5, 1, 0)
+logit3.pred.test <- ifelse(predict(logit3, test, type="response") > 0.5, 1, 0)
+
+logit.step.pred.train = ifelse(predict(logit.step, train, type="response") > 0.5, 1, 0)
+logit.step.pred.test = ifelse(predict(logit.step, test, type="response") > 0.5, 1, 0)
+
+# Accuracy
+accuracy <- function(predicted, actual){
+  acc = sum(predicted==actual)/length(predicted)
+  return(acc)
+}
+
+# Table with accuracies
+tab = data.frame(logit3=
+                   c(accuracy(logit3.pred.train, train$happy_cont),
+                     accuracy(logit3.pred.test, test$happy_cont)),
+                 logit.step=
+                   c(accuracy(logit.step.pred.train, train$happy_cont),
+                     accuracy(logit.step.pred.test, test$happy_cont)))
+rownames(tab) <- c("train", "test")
+tab
+
+```
+
