@@ -15,7 +15,6 @@ library(glmnet)
 ```
 
 Create a test and train set:
-
 ```{r}
 ## 80% of the sample size
 smp_size <- floor(0.80 * nrow(df))
@@ -27,7 +26,48 @@ train_ind <- sample(seq_len(nrow(df)), size = smp_size)
 # Get train and test dataset
 train <- df[train_ind, ] %>% select(-happy)
 test <- df[-train_ind, ] %>% select(-happy)
+
+# Remove observations with missing response variable
+train <- train %>% filter(!is.na(train$happy_cont))
+test <- test %>% filter(!is.na(test$happy_cont))
 ```
+
+```{r}
+# Look at the missing values across variables
+apply(is.na(train), 2, sum)
+apply(is.na(test), 2, sum)
+
+# Function that gets the mode
+# https://www.tutorialspoint.com/r/r_mean_median_mode.htm
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+# Impute missing values by substituting the column mode
+# as.numeric turns 0-1 factors into 1 and 2, and we need to account for this by subtracting 1 from those columns with 0-1 factors
+
+cols01 = c("urban", "healthy", "church_member", "sport_member", "arts_member", "union_member", "political_party_member", "environment_member", "prof_member", "charity_member", "consumer_member", "self_help_member", "women_member", "religious","political_5","political_6", "immigrant", "immigrant_mother", "immigrant_father", "citizen", "live_with_parents", "breadwinner", "male")
+cols_multiple_factors = c("town_size", "settlement_type", "political_1", "political_2","political_3","political_4",'age','household_size','relationship',"num_kids","education","education_mother", "education_father","employment_status","occupation","sector", "income", "religion")
+
+# Assign a value of the column mode to all missing values
+for(col in cols01){
+  # Train set
+  mod = getmode(as.numeric(train[,col][!is.na(train[,col])]))-1 
+  train[,col][is.na(train[,col])] <- mod
+  # Test set
+  mod = getmode(as.numeric(test[,col][!is.na(test[,col])]))-1
+  test[,col][is.na(test[,col])] <- mod
+}
+for(col in cols_multiple_factors){
+  # Train set
+  mod = getmode(as.numeric(train[,col][!is.na(train[,col])]))
+  train[,col][is.na(train[,col])] <- mod
+  # Test set
+  mod = getmode(as.numeric(test[,col][!is.na(test[,col])]))
+  test[,col][is.na(test[,col])] <- mod
+}
+```
+
 
 Two simple logistic regression models
 
@@ -47,19 +87,11 @@ The multiplicative change in odds ratio of being happy for a 1-year increase in 
 
 Multiple logistic regression model
 ```{r}
-logit3 = glm(happy_cont ~ . -country -year -age, data=train, family='binomial')
+logit3 = glm(happy_cont ~ . -country -year, data=train, family='binomial')
 
 # See exponentiated betas in a sorted list from smallest to largest
 exp(as.data.frame(summary(logit3)$coef[,1])) %>% arrange(summary(logit3)$coef[, 1])
 ```
-
-```{r}
-logit5 = glm(happy_cont ~ . -country -year, data=train, family='binomial')
-
-# See exponentiated betas in a sorted list from smallest to largest
-exp(as.data.frame(summary(logit5)$coef[,1])) %>% arrange(summary(logit5)$coef[, 1])
-```
-
 
 ```{r eval=FALSE}
 # TAKES A LONG TIME; Calculting confidence intervals of coefficients
@@ -79,7 +111,11 @@ logit3_df_exp <- logit3_df_exp %>%
 logit3_df_exp %>% filter(signif == TRUE)
 ```
 
+```{r}
+head(logit3_df_exp, 10) %>% mutate(desc = c('Jewish', 'Separated', 'Orthodox', 'Divorced', 'Unemployed', 'Might join boycotts', 'Widowed', 'Other', 'Single', 'Protestant'))
 
+tail(logit3_df_exp, 10) %>% arrange(-estimate) %>% filter(variable != "(Intercept)") %>% mutate(desc = c('Good health', 'High income', 'Middle income', 'Usually vote in local elections', 'Always vote in local elections', 'Church member', 'Might sign petition', 'Immigrant', 'Secondary'))
+```
 
 According to our logistic model, the significant variables that correspond to the lowest odds ratio coefficient are:
 - Jewish or Orthodox religion, and less so protestant
@@ -97,60 +133,14 @@ The significant variables that correspond to the higheset odds ratio coefficient
 - Signing political petitions
 - Being a charity member
 
-Stepwise variable selection in GLM
-May not be useful, since we have many missing values. We'd need to assign a value of 1 for missing data, which is not ideal.
-```{r}
-# Remove observations with missing response variable
-train <- train %>% filter(!is.na(train$happy_cont))
-test <- test %>% filter(!is.na(test$happy_cont))
-
-# Look at the missing values across variables
-apply(is.na(train), 2, sum)
-apply(is.na(test), 2, sum)
-
-# Impute missing values
-
-# as.numeric turns 0-1 factors into 1 and 2, and we need to account for this by subtracting 1 from those columns with 0-1 factors
-cols01 = c("urban", "healthy", "church_member", "sport_member", "arts_member", "union_member", "political_party_member", "environment_member", "prof_member", "charity_member", "consumer_member", "self_help_member", "women_member", "religious","political_5","political_6", "immigrant", "immigrant_mother", "immigrant_father", "citizen", "live_with_parents", "breadwinner", "male")
-cols_multiple_factors = c("town_size", "settlement_type", "political_1", "political_2","political_3","political_4",'age','household_size','relationship',"num_kids","education","education_mother", "education_father","employment_status","occupation","sector", "income", "religion")
-
-# Assign a value of the column median to all missing values
-for(col in cols01){
-  # Train set
-  med = median(as.numeric(train[,col][!is.na(train[,col])]))-1 # subtracting 1 as stated above
-  train[,col][is.na(train[,col])] <- med
-  # Test set
-  med = median(as.numeric(test[,col][!is.na(test[,col])]))-1
-  test[,col][is.na(test[,col])] <- med
-}
-for(col in cols_multiple_factors){
-  # Train set
-  med = median(as.numeric(train[,col][!is.na(train[,col])]))
-  train[,col][is.na(train[,col])] <- med
-  # Test set
-  med = median(as.numeric(test[,col][!is.na(test[,col])]))
-  test[,col][is.na(test[,col])] <- med
-}
-
-logit4 = glm(happy_cont ~ . -country -year, data=train, family='binomial')
-
-# Takes long to run backward variable selection
-logit.step = step(logit4, direction='backward', trace=0)
-round(summary(logit.step)$coef,5)
-```
-
-Compare logit3 and logit.step
-
-```{r}
-anova(logit.step, logit3, test="LRT")
-```
+Stepwise variable selection in GLM doesn't quite make sense when using categorical factors.
 
 LASSO model and comparison to logit.step
 
 Exploring the use of a LASSO model to get rid of uninformative predictors that get shrunk to zero.
 ```{r eval=FALSE}
 # Fit a Lasso model
-X = model.matrix(logit4)[,-1]
+X = model.matrix(logit3)[,-1]
 lasso.cv = cv.glmnet(X,train$happy_cont,k=5)
 plot(lasso.cv)
 ```
@@ -165,23 +155,30 @@ legend(x=6,y=28,colnames(X),lty=1:5,col=1:6,cex=0.5,lwd=1.2)
 ```
 
 ```{r eval=FALSE}
-coef(lasso.cv,s=lasso.cv$lambda.min)
+coef(lasso.cv,s=lasso.cv$lambda.1se)
 ```
 
-
-Logistic Mixed Effects model, by country
+Based on the LASSO coefficients shrunk to zero, we decide to drop the 'Age' and 'Sector' predictors.
 
 ```{r}
-glmer1 = glmer(happy_cont ~ (1|country), data=train, family='binomial')
+logit.lasso = glm(happy_cont ~ . -country -year -age -sector, data=train, family='binomial')
 ```
+
+```{r}
+logit.lasso.1se = glm(happy_cont ~ . -country -year -age -sector -settlement_type -sport_member -arts_member -union_member -environment_member -prof_member -consumer_member -self_help_member -women_member -religious -political_3 -political_4 -immigrant_mother -immigrant_father -num_kids, data=train, family='binomial')
+```
+
 
 Obtain the predictions and accuracies
 ```{r}
 logit3.pred.train <- ifelse(predict(logit3, train, type="response") > 0.5, 1, 0)
 logit3.pred.test <- ifelse(predict(logit3, test, type="response") > 0.5, 1, 0)
 
-logit.step.pred.train = ifelse(predict(logit.step, train, type="response") > 0.5, 1, 0)
-logit.step.pred.test = ifelse(predict(logit.step, test, type="response") > 0.5, 1, 0)
+logit.step.pred.train = ifelse(predict(logit.lasso, train, type="response") > 0.5, 1, 0)
+logit.step.pred.test = ifelse(predict(logit.lasso, test, type="response") > 0.5, 1, 0)
+
+logit.1se.pred.train = ifelse(predict(logit.lasso.1se, train, type="response") > 0.5, 1, 0)
+logit.1se.pred.test = ifelse(predict(logit.lasso.1se, test, type="response") > 0.5, 1, 0)
 
 # Accuracy
 accuracy <- function(predicted, actual){
@@ -191,16 +188,23 @@ accuracy <- function(predicted, actual){
 
 # Table with accuracies
 tab = data.frame(logit3=
-                   c(accuracy(logit3.pred.train, train$happy_cont),
+                   c(42, 
+                     accuracy(logit3.pred.train, train$happy_cont),
                      accuracy(logit3.pred.test, test$happy_cont)),
-                 logit.step=
-                   c(accuracy(logit.step.pred.train, train$happy_cont),
-                     accuracy(logit.step.pred.test, test$happy_cont)),
+                 logit.lasso.min=
+                  c(40,
+                    accuracy(logit.step.pred.train,train$happy_cont),
+                     accuracy(logit.step.pred.test,test$happy_cont)),
+                 logit.lasso.1se=
+                  c(25,
+                    accuracy(logit.1se.pred.train,train$happy_cont),
+                     accuracy(logit.1se.pred.test,test$happy_cont)),
                  baseline=
-                   c(sum(train$happy_cont)/dim(train)[1], 
+                   c(0,
+                     sum(train$happy_cont)/dim(train)[1], 
                      sum(test$happy_cont)/dim(test)[1]))
-rownames(tab) <- c("train", "test")
-round(tab, 3)
-
+rownames(tab) <- c("# predictors","train accuracy", "test accuracy")
+tab[2:3,] <- round(tab[2:3,], 3)
+tab
 ```
 
