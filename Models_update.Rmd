@@ -14,7 +14,7 @@ library(lme4)
 library(glmnet)
 ```
 
-Create a test and train set:
+## Creating a test and train set:
 ```{r}
 ## 80% of the sample size
 smp_size <- floor(0.80 * nrow(df))
@@ -24,12 +24,12 @@ set.seed(123)
 train_ind <- sample(seq_len(nrow(df)), size = smp_size)
 
 # Get train and test dataset
-train <- df[train_ind, ] %>% select(-happy)
-test <- df[-train_ind, ] %>% select(-happy)
+train <- df[train_ind, ]
+test <- df[-train_ind, ]
 
 # Remove observations with missing response variable
-train <- train %>% filter(!is.na(train$happy_cont))
-test <- test %>% filter(!is.na(test$happy_cont))
+train <- train %>% filter(!is.na(train$happy))
+test <- test %>% filter(!is.na(test$happy))
 ```
 
 ```{r}
@@ -84,21 +84,21 @@ Two simple logistic regression models
 
 Happiness by gender:
 ```{r}
-logit1 = glm(happy_cont ~ male, data=train, family='binomial')
+logit1 = glm(happy ~ male, data=train, family='binomial')
 summary(logit1)$coef
 ```
 The odds ratio for being happy comparing men to women is estimated to be `r exp(coef(logit1)[2])` with 95% CI `r exp(confint(logit1))`
 
 Happiness by age:
 ```{r}
-logit2 = glm(happy_cont ~ age, data=train, family='binomial')
+logit2 = glm(happy ~ age, data=train, family='binomial')
 summary(logit2)$coef
 ```
 The multiplicative change in odds ratio of being happy for a 1-year increase in age is `r exp(coef(logit2)[2])` with 95% CI `r exp(confint(logit2)[2,])`
 
 Multiple logistic regression model
 ```{r}
-logit3 = glm(happy_cont ~ . -country -year, data=train, family='binomial')
+logit3 = glm(happy ~ . -country -year, data=train, family='binomial')
 
 # See exponentiated betas in a sorted list from smallest to largest
 exp(as.data.frame(summary(logit3)$coef[,1])) %>% arrange(summary(logit3)$coef[, 1])
@@ -146,85 +146,19 @@ The significant variables that correspond to the higheset odds ratio coefficient
 
 Stepwise variable selection in GLM doesn't quite make sense when using categorical factors.
 
-LASSO model and comparison to logit.step
+## Variable Selection
 
-Exploring the use of a LASSO model to get rid of uninformative predictors that get shrunk to zero.
-```{r eval=FALSE}
-# Fit a Lasso model
-X = model.matrix(logit3)[,-1]
-lasso.cv = cv.glmnet(x = X, y = train$happy_cont, alpha = 1, family = "multinomial", type.multinomial="grouped"
-)
-plot(lasso.cv)
+```{r cache = T}
+# Takes long to run backward variable selection
+logit.step = step(logit3, direction='backward', trace=0)
+round(summary(logit.step)$coef,5)
 ```
 
-```{r eval=FALSE}
-# Look at the trajectory plot of the coefficients
-coefs = coef(lasso.cv,s=lasso.cv$lambda)
-num.maineffects = ncol(X) 
-matplot(log(lasso.cv$lambda),t(coefs[2:(num.maineffects+1),]),type="l")
-abline(v=log(lasso.cv$lambda.min),col="gray",lty=2)
-legend(x=6,y=28,colnames(X),lty=1:5,col=1:6,cex=0.5,lwd=1.2)
-```
-
-```{r eval=FALSE}
-coef(lasso.cv,s=lasso.cv$lambda.1se)
-```
-
-Based on the LASSO coefficients shrunk to zero, we decide to drop the 'Age' and 'Sector' predictors.
-
-```{r}
-logit.lasso = glm(happy_cont ~ . -country -year -age -sector, data=train, family='binomial')
-```
-
-```{r}
-logit.lasso.1se = glm(happy_cont ~ . -country -year -age -sector -settlement_type -sport_member -arts_member -union_member -environment_member -prof_member -consumer_member -self_help_member -women_member -religious -political_3 -political_4 -immigrant_mother -immigrant_father -num_kids, data=train, family='binomial')
-```
-
-
-Obtain the predictions and accuracies
-```{r}
-logit3.pred.train <- ifelse(predict(logit3, train, type="response") > 0.5, 1, 0)
-logit3.pred.test <- ifelse(predict(logit3, test, type="response") > 0.5, 1, 0)
-
-logit.step.pred.train = ifelse(predict(logit.lasso, train, type="response") > 0.5, 1, 0)
-logit.step.pred.test = ifelse(predict(logit.lasso, test, type="response") > 0.5, 1, 0)
-
-logit.1se.pred.train = ifelse(predict(logit.lasso.1se, train, type="response") > 0.5, 1, 0)
-logit.1se.pred.test = ifelse(predict(logit.lasso.1se, test, type="response") > 0.5, 1, 0)
-
-# Accuracy
-accuracy <- function(predicted, actual){
-  acc = sum(predicted==actual)/length(predicted)
-  return(acc)
-}
-
-# Table with accuracies
-tab = data.frame(logit3=
-                   c(42, 
-                     accuracy(logit3.pred.train, train$happy_cont),
-                     accuracy(logit3.pred.test, test$happy_cont)),
-                 logit.lasso.min=
-                  c(40,
-                    accuracy(logit.step.pred.train,train$happy_cont),
-                     accuracy(logit.step.pred.test,test$happy_cont)),
-                 logit.lasso.1se=
-                  c(25,
-                    accuracy(logit.1se.pred.train,train$happy_cont),
-                     accuracy(logit.1se.pred.test,test$happy_cont)),
-                 baseline=
-                   c(0,
-                     sum(train$happy_cont)/dim(train)[1], 
-                     sum(test$happy_cont)/dim(test)[1]))
-rownames(tab) <- c("# predictors","train accuracy", "test accuracy")
-tab[2:3,] <- round(tab[2:3,], 3)
-tab
-```
 
 ## Logistic Mixed Effects model, by country
 
-We hypothesize that the distribution of happiness levels are correlated for our samples at the country level. Political and economic circumstances of a country `X` would affect happiness of samples from `X` but not those from countries `Y, Z`. Moreover, people living in some countries, perhaps developed ones, are more likely to be happier than people living in other, likely undeveloped, countries. Existence of scenarios like these makes `country` a natural grouping variable. The below histogram yields support to this argument:
-
 ```{r, echo = F}
+# Grid of happiness distributions by country
 df %>% 
   mutate(happy_full = happy_full) %>%
   ggplot(aes(x = happy_full)) + 
@@ -240,12 +174,14 @@ mode <- function(codes){
   which.max(tabulate(codes))
 }
 
+# Mode response by country
 happy.modes <- df %>% 
   filter(!is.na(happy_full)) %>% 
   group_by(country) %>%
   summarize(n = mode(happy_full)) %>% 
   ungroup()
 
+# Percentage of population for each response
 happy.perc <- df %>% 
   filter(!is.na(happy_full)) %>% 
   group_by(country, happy_full) %>%
@@ -260,40 +196,57 @@ happy.perc <- df %>%
     `4` = round(`4` / total, 3)
     )
 ```
-From this, there are 2 main takeaways. First, there exist important distributional differences among countries. Although the mode happiness level is 2 for most states, in developing countries such as `r as.character(happy.modes$country[happy.modes$n == 1])` the most popular response was `1 = Not at all happy`. Meanwhile, all developed countries in the dataset have mode happiness levels higher at `2 = Not very happy`. Second, the number of samples vary largely among countries. This can lead to overfitting for states like `CHL, ARG, CYP` (< 1000 samples, with many `NA` values) if `country` were to be included as a categorical variable. These 2 observations make mixed effect models grouped by `country` highly relevant for this problem. 
 
-As a baseline, we can fit a linear mixed effects model with random intercepts including all variables except `country, year`:
 ```{r}
+# Random intercept model with country as the main effect
 glmer1 = glmer(
-  happy_cont ~ . - country - year -happy_full + (1 | country), 
+  happy ~ . -country -year -arts_member -environment_member 
+            -prof_member -consumer_member -women_member 
+            -political_3 -age -immigrant_mother 
+            -immigrant_father -num_kids -sector   
+            + (1 | country), 
   data=train, 
-  nAGQ=0,
+  nAGQ=0, # This argument is necessary for convergence
   family='binomial')
 ```
 
 ```{r}
 summary(glmer1)
-# Print the random effects
-ranef(glmer1)
+
+# Random effects
+glmer1.rand_ints <- tibble(ranef(glmer1)$country)
+country_names <- as.character(sort(unique(train$country)))
+glmer1.rand_ints <- glmer1.rand_ints %>%
+  mutate(Country = country_names) %>% 
+  rename(Intercept = `(Intercept)`) %>%
+  select(Country, Intercept)
+
+# Make a multicolumn table for the paper
+library(kableExtra)
+kable(
+  list(state=glmer1.rand_ints[1:12, ], 
+       state=glmer1.rand_ints[13:24, ], 
+       state=glmer1.rand_ints[25:36, ],
+       state=glmer1.rand_ints[37:48, ])
+  )
+
+summary(glmer1)$coef[summary(glmer1)$coeff[, 4] < 0.05, ]
 ```
 
-Another variable that should be considered for random effects in the mixed effects model is the `year` variable. The dataset contains 4 years 2017 - 2020, which is not enough to seriously track temporal trends over time.  However, the effect of year on happiness is non-negligible, and using it as a categorical variable fits our purposes. Particularly, some years 
-
-However, different countries are affected by different circumstances in each year which would affect the happiness levels of local samples differently. For example, in the years following up to 2020, Latin American countries were dealing with a severe economic and political crisis due to plummeting oil prices whereas United States was experiencing economic boom. These pre-covid years likely affected Latin Americans differently than Americans. 
-
 ```{r}
-df %>% 
-  mutate(happy_full = happy_full) %>%
-  group_by(year) %>%
-  summarize(mean_happiness = mean()) %>%
-  ungroup() %>%
-  ggplot(aes(x = year, y = mode_happiness)) + 
-        geom_line(color = "firebrick", alpha = 0.3) +
-        facet_wrap(. ~ country, ncol = 10) +
-        labs(
-          x = "Happiness Level (1-4)", 
-          y = "Number of Respondents",
-          title = "Distribution of happiness levels (1-4) by country"
-          )
+### Investigate the effect of year
 
+# Get happy_full vector with all 4 happiness levels for our training set
+happy_full_train <- df[train_ind, ] %>%
+  mutate(happy_full = happy_full[train_ind]) %>% 
+  filter(!is.na(happy)) %>%
+  pull(happy_full)
+
+# Get a table of mean happiness by year
+train %>% 
+  mutate(happy_full = happy_full_train) %>%
+  group_by(year) %>%
+  mutate(happy = as.numeric(happy) - 1) %>%
+  summarize(mean_happiness = mean(happy)) %>%
+  ungroup()
 ```
