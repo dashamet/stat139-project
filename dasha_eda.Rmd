@@ -1,0 +1,186 @@
+---
+title: "EDA"
+author: "Dasha Metropolitansky"
+date: "12/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+```
+
+# Income vs. happiness
+```{r}
+df %>% 
+  cbind(happy_full) %>% 
+  mutate(happy_full = as.factor(happy_full)) %>%
+  select(income, happy_full) %>%
+  filter(!is.na(income) & !is.na(happy_full)) %>%
+  group_by(income, happy_full) %>% 
+  summarise(pct=n()) %>% 
+  group_by(income) %>% 
+  mutate(pct=pct/sum(pct)*100) %>%
+  ggplot(aes(x = income, y = pct, fill = happy_full)) + 
+  geom_bar(stat = 'identity') + 
+  scale_fill_manual(breaks = c("1", "2", "3", "4"),
+                    values = c("firebrick", "dodgerblue2", "springgreen4", "chocolate1"),
+                    labels = c("Very happy", "Quite happy", "Not very happy", "Not at all happy")) +
+  scale_x_discrete(labels = c("Low", "Middle", "High")) +
+  theme_classic() +
+  labs(x = 'Income Level',
+       y = '% of Respondents',
+       title = 'Happiness by Income Level',
+       fill = 'Happiness')
+```
+
+# Health vs. happiness
+```{r}
+df %>% 
+  cbind(happy_full) %>% 
+  mutate(happy_full = as.factor(happy_full)) %>%
+  select(healthy, happy_full) %>%
+  filter(!is.na(healthy) & !is.na(happy_full)) %>%
+  group_by(healthy, happy_full) %>% 
+  summarise(pct=n()) %>% 
+  group_by(healthy) %>% 
+  mutate(pct=pct/sum(pct)*100) %>%
+  ggplot(aes(x = healthy, y = pct, fill = happy_full)) + 
+  geom_bar(stat = 'identity') + 
+  scale_fill_manual(breaks = c("1", "2", "3", "4"),
+                    values = c("firebrick", "dodgerblue2", "springgreen4", "chocolate1"),
+                    labels = c("Very happy", "Quite happy", "Not very happy", "Not at all happy")) +
+  scale_x_discrete(labels = c("Unhealthy", "Healthy")) +
+  theme_classic() +
+  labs(x = 'Health',
+       y = '% of Respondents',
+       title = 'Happiness by Health',
+       fill = 'Happiness')
+```
+
+# Education vs. happiness
+```{r}
+df %>% 
+  cbind(happy_full) %>% 
+  mutate(happy_full = as.factor(happy_full)) %>%
+  select(education, happy_full) %>%
+  filter(!is.na(education) & !is.na(happy_full)) %>%
+  group_by(education, happy_full) %>% 
+  summarise(pct=n()) %>% 
+  group_by(education) %>% 
+  mutate(pct=pct/sum(pct)*100) %>%
+  ggplot(aes(x = education, y = pct, fill = happy_full)) + 
+  geom_bar(stat = 'identity') + 
+  scale_fill_manual(breaks = c("1", "2", "3", "4"),
+                    values = c("firebrick", "dodgerblue2", "springgreen4", "chocolate1"),
+                    labels = c("Very happy", "Quite happy", "Not very happy", "Not at all happy")) +
+  scale_x_discrete(labels = c("Primary", "Secondary", "Post-secondary", "Tertiary")) +
+  theme_classic() +
+  labs(x = 'Highest Education Level',
+       y = '% of Respondents',
+       title = 'Happiness by Education Level',
+       fill = 'Happiness')
+```
+
+# Church membership vs. happiness
+```{r}
+df %>% 
+  cbind(happy_full) %>% 
+  mutate(happy_full = as.factor(happy_full)) %>%
+  select(church_member, happy_full) %>%
+  filter(!is.na(church_member) & !is.na(happy_full)) %>%
+  group_by(church_member, happy_full) %>% 
+  summarise(pct=n()) %>% 
+  group_by(church_member) %>% 
+  mutate(pct=pct/sum(pct)*100) %>%
+  ggplot(aes(x = church_member, y = pct, fill = happy_full)) + 
+  geom_bar(stat = 'identity') + 
+  scale_fill_manual(breaks = c("1", "2", "3", "4"),
+                    values = c("firebrick", "dodgerblue2", "springgreen4", "chocolate1"),
+                    labels = c("Very happy", "Quite happy", "Not very happy", "Not at all happy")) +
+  scale_x_discrete(labels = c("Not a member", "Member")) +
+  theme_classic() +
+  labs(x = 'Church Membership',
+       y = '% of Respondents',
+       title = 'Happiness by Church Membership',
+       fill = 'Happiness')
+```
+
+# Distribution of happiness responses
+```{r warning=FALSE}
+df %>% 
+  cbind(happy_full) %>% 
+  mutate(happy_full = as.factor(happy_full)) %>%
+  ggplot(aes(x = happy_full)) + 
+  geom_histogram(stat = 'count') + 
+  theme_classic() + 
+  labs(x = 'Happiness Level',
+       y = 'Count',
+       title = 'Distribution of Happiness Levels') + 
+  scale_x_discrete(labels = c("Very happy", "Quite happy", "Not very happy", "Not at all happy", "NA"))
+```
+
+# Percent breakdown of happiness responses
+```{r}
+df %>% 
+  cbind(happy_full) %>% 
+  group_by(happy_full) %>%
+  summarize(pct = round(n()/nrow(df) * 100,2))
+```
+
+# Distribution of quantitative variables
+```{r}
+df_quant = df %>%
+  select(age, num_kids, household_size, ideology)
+
+df_quant %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram() + 
+  theme_classic() +
+  labs(x = 'Value',
+       y = 'Count',
+       title = 'Distribution of Numeric Variables')
+```
+
+# Distribution of transformed quantitative variables
+```{r}
+
+df_quant = df %>%
+  select(age, num_kids, household_size, ideology) %>% 
+  mutate(log_age = log(age),
+         log_num_kids = log(num_kids),
+         log_household_size = log(household_size)) %>% 
+  select(-c(age, num_kids, household_size, ideology))
+df_quant %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram() + 
+  theme_classic() +
+  labs(x = 'Value',
+       y = 'Count',
+       title = 'Distribution of Log-Transformed Numeric Variables')
+```
+
+# Mean happiness score by country
+```{r}
+df %>%
+  cbind(happy_full) %>% 
+  group_by(country) %>% 
+  summarize(num_na = sum(is.na(happy_full))/n(),
+            mean_happiness = mean(happy_full, na.rm=TRUE)) %>% 
+  ggplot(aes(x = reorder(country, mean_happiness),
+             y = mean_happiness,
+             width = 0.8)) + 
+  geom_bar(stat = 'identity') + 
+  ylim(0, 3) +
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  labs(x = 'Country',
+       y = 'Mean Happiness', 
+       title = 'Happiness by Country',
+       subtitle = 'A lower score corresponds to higher happiness')
+```
+
+
