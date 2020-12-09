@@ -183,4 +183,14 @@ df %>%
        subtitle = 'A lower score corresponds to higher happiness')
 ```
 
+# Mean happiness over time 
+```{r}
+x = df %>%
+  cbind(happy_full) %>%
+  group_by(year) %>%
+  summarize(n = n(),
+            mean_happiness = mean(happy_full, na.rm=TRUE))
+colnames(x) = c("Year", "Number of Observations", "Mean Happiness Score")
+x
+```
 
