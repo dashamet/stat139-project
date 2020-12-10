@@ -142,3 +142,22 @@ train  %>%
        title = 'Happiness by Education Category',
        subtitle = 'A higher score corresponds to higher happiness')
 ```
+
+```{r}
+train  %>% 
+  mutate(happy_full = happy_full_train) %>%
+  group_by(religion) %>% 
+  summarize(mean_happiness = mean(as.numeric(happy)-1)) %>% 
+  ggplot(aes(x = religion,
+             y = mean_happiness,
+             width = 0.8)) + 
+  geom_bar(stat = 'identity') + 
+  ylim(0, 1) +
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  labs(x = 'Religion',
+       y = 'Mean Happiness', 
+       title = 'Happiness by Religion',
+       subtitle = 'A higher score corresponds to higher happiness')
+```
+
